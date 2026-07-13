@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify placement
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer
+          coverage: none
+
+      - run: composer validate --strict
+
+      - run: composer install --no-interaction --no-progress
+
+      # The build must produce a complete, correctly-assembled tree.
+      - name: Assert build placement
+        run: |
+          test -f wordpress/wp-settings.php
+          test -f wordpress/wp-config.php
+          test -f wordpress/wp-content/mu-plugins/upsun/upsun.php
+          test -f wordpress/wp-content/mu-plugins/upsun-loader.php
+          test -f wordpress/wp-content/mu-plugins/site-config.php
+          test -f wordpress/wp-content/object-cache.php
+          test ! -f wordpress/wp-content/plugins/hello.php
+
+      - name: Lint project PHP
+        run: |
+          php -l wp-config.php
+          php -l mu-plugins/site-config.php

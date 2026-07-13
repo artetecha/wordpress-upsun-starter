@@ -1,0 +1,73 @@
+{
+  "name": "artetecha/wordpress-upsun-starter",
+  "description": "A deploy-ready Composer WordPress for Upsun, pre-wired with the upsun-wp mu-plugin: environment awareness, safe preview clones, deploy migrations, router-cache friendliness, and a wp upsun CLI.",
+  "type": "project",
+  "license": "MIT",
+  "homepage": "https://upsun.artetecha.com/",
+  "authors": [
+    {
+      "name": "Vince Russo",
+      "homepage": "https://artetecha.com"
+    }
+  ],
+  "repositories": [
+    {
+      "type": "composer",
+      "url": "https://wpackagist.org",
+      "only": [
+        "wpackagist-plugin/*",
+        "wpackagist-theme/*"
+      ]
+    }
+  ],
+  "require": {
+    "php": ">=8.2",
+    "artetecha/upsun-wp": "^0.3",
+    "composer/installers": "^2.3",
+    "johnpbloch/wordpress-core": "^7.0",
+    "johnpbloch/wordpress-core-installer": "^2.0",
+    "platformsh/config-reader": "^3.0",
+    "wpackagist-plugin/redis-cache": "^2.8",
+    "wpackagist-theme/twentytwentyfive": "^1.0"
+  },
+  "extra": {
+    "wordpress-install-dir": "wordpress",
+    "installer-paths": {
+      "composer-mu-plugins/{$name}": [
+        "artetecha/upsun-wp"
+      ],
+      "wordpress/wp-content/plugins/{$name}": [
+        "type:wordpress-plugin"
+      ],
+      "wordpress/wp-content/themes/{$name}": [
+        "type:wordpress-theme"
+      ],
+      "wordpress/wp-content/mu-plugins/{$name}": [
+        "type:wordpress-muplugin"
+      ]
+    }
+  },
+  "scripts": {
+    "postbuild": [
+      "cp wp-config.php wordpress/",
+      "cp -r mu-plugins wordpress/wp-content/",
+      "rm -rf wordpress/wp-content/mu-plugins/upsun",
+      "cp -R composer-mu-plugins/upsun wordpress/wp-content/mu-plugins/upsun",
+      "cp composer-mu-plugins/upsun/upsun-loader.php wordpress/wp-content/mu-plugins/upsun-loader.php",
+      "cp wordpress/wp-content/plugins/redis-cache/includes/object-cache.php wordpress/wp-content/object-cache.php",
+      "rm -f wordpress/wp-content/plugins/hello.php"
+    ],
+    "post-install-cmd": "@postbuild",
+    "post-update-cmd": "@postbuild"
+  },
+  "config": {
+    "allow-plugins": {
+      "composer/installers": true,
+      "johnpbloch/wordpress-core-installer": true
+    },
+    "platform": {
+      "php": "8.4.0"
+    },
+    "sort-packages": true
+  }
+}

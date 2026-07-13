@@ -1,0 +1,102 @@
+# WordPress on Upsun, pre-wired for the upsun-wp mu-plugin.
+# https://github.com/artetecha/wordpress-upsun-starter
+
+applications:
+  wordpress:
+    type: "php:8.4"
+
+    runtime:
+      extensions:
+        - redis
+
+    build:
+      flavor: composer
+
+    dependencies:
+      php:
+        wp-cli/wp-cli-bundle: "^2.12"
+
+    # Relationship names must match wp-config.php.
+    relationships:
+      database: "db:mysql"
+      rediscache: "cache:redis"
+
+    # The only writable paths; everything else is read-only by design.
+    # `wp upsun mounts` suggests additions when plugins need more.
+    mounts:
+      "wordpress/wp-content/uploads":
+        source: storage
+        source_path: "uploads"
+      "wordpress/wp-content/cache":
+        source: storage
+        source_path: "cache"
+
+    web:
+      locations:
+        "/":
+          root: "wordpress"
+          passthru: "/index.php"
+          index:
+            - "index.php"
+          expires: 600
+          scripts: true
+          allow: true
+          rules:
+            ^/composer\.(json|lock)$:
+              allow: false
+            ^/license\.txt$:
+              allow: false
+            ^/readme\.html$:
+              allow: false
+            ^/xmlrpc\.php$:
+              allow: false
+        "/wp-content/cache":
+          root: "wordpress/wp-content/cache"
+          scripts: false
+          allow: false
+        "/wp-content/uploads":
+          root: "wordpress/wp-content/uploads"
+          scripts: false
+          allow: true
+
+    hooks:
+      deploy: |
+        set -e
+        bash scripts/deploy.sh
+      # post_deploy is the only hook that runs on every redeploy including
+      # data syncs - it is where the preview sanitize (and your project's
+      # sanitization policy) belongs. See scripts/post-deploy.sh.
+      post_deploy: |
+        set -e
+        bash scripts/post-deploy.sh
+
+    crons:
+      wp-cron:
+        spec: "*/5 * * * *"
+        cmd: "cd wordpress && wp cron event run --due-now"
+
+services:
+  db:
+    type: mariadb:11.8
+  cache:
+    type: redis:8.0
+
+routes:
+  "https://{default}/":
+    type: upstream
+    upstream: "wordpress:http"
+    cache:
+      enabled: true
+      # Cookies that key (and effectively bypass) the router cache. Mirror
+      # any change in mu-plugins/site-config.php so `wp upsun cache-check`
+      # reports the real list. Running WooCommerce? Add:
+      #   - "/^wp_woocommerce_session_/"
+      #   - "woocommerce_items_in_cart"
+      #   - "woocommerce_cart_hash"
+      cookies:
+        - "/^wordpress_logged_in_/"
+        - "/^wordpress_sec_/"
+        - "wordpress_test_cookie"
+        - "/^wp-settings-/"
+        - "/^wp-postpass/"
+        - "PHPSESSID"

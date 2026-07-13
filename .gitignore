@@ -1,0 +1,10 @@
+# Composer/build output — never edit by hand
+/vendor/
+/wordpress/
+/composer-mu-plugins/
+
+# Local-only WordPress config
+/wp-config-local.php
+
+# OS/editor files
+.DS_Store
