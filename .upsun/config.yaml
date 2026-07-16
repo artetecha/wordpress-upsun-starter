@@ -41,6 +41,11 @@ applications:
           expires: 600
           scripts: true
           allow: true
+          # nosniff on static assets served directly (JS/CSS/fonts). The HTML
+          # document's security headers come from the upsun-wp SecurityHeaders
+          # module: web.locations headers only decorate static files.
+          headers:
+            X-Content-Type-Options: nosniff
           rules:
             ^/composer\.(json|lock)$:
               allow: false
@@ -58,6 +63,9 @@ applications:
           root: "wordpress/wp-content/uploads"
           scripts: false
           allow: true
+          # nosniff matters most on user-uploaded content.
+          headers:
+            X-Content-Type-Options: nosniff
 
     hooks:
       deploy: |
