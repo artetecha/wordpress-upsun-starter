@@ -114,12 +114,17 @@ while read -r slug local_ver remote_ver fetcher; do
 		# composer.json), which can differ from the dry-run prediction if the
 		# upstream moved between check and update — so the PR never claims a
 		# version other than the one it commits. Falls back to the prediction.
-		cj="$(ls "$VENDOR_DIR"/plugins/"$slug"/composer.json "$VENDOR_DIR"/themes/"$slug"/composer.json 2>/dev/null | head -1)"
+		# A package lives in exactly one of plugins/ or themes/; probe each with
+		# a plain -f test rather than `ls a b` (which exits non-zero on the
+		# missing path and, under set -euo pipefail, would abort here).
 		ver="$remote_ver"
-		if [ -n "$cj" ]; then
-			ver="$(php -r '$c = json_decode(file_get_contents($argv[1]), true); echo is_array($c) ? ($c["version"] ?? "") : "";' "$cj")"
-			[ -n "$ver" ] || ver="$remote_ver"
-		fi
+		for _kind in plugins themes; do
+			_cj="$VENDOR_DIR/$_kind/$slug/composer.json"
+			[ -f "$_cj" ] || continue
+			_v="$(php -r '$c = json_decode(file_get_contents($argv[1]), true); echo is_array($c) ? ($c["version"] ?? "") : "";' "$_cj")"
+			[ -n "$_v" ] && ver="$_v"
+			break
+		done
 		marker="<!-- vendored-update: ${slug}@${ver} -->"
 
 		git commit -m "Update ${slug} ${local_ver} -> ${ver} (vendored premium)"

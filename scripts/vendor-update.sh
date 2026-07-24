@@ -135,7 +135,12 @@ for line in sys.stdin:
         continue
     if isinstance(data, list):
         for p in data:
-            rows.append((p.get("slug", ""), p.get("from", "") or "?", p.get("to", ""), p.get("fetcher", "")))
+            slug, frm, to, fet = p.get("slug", ""), p.get("from", "") or "?", p.get("to", ""), p.get("fetcher", "")
+            # Skip a malformed plan: a blank slug or version would collapse the
+            # space-separated porcelain columns the shell reads (read -r would
+            # then shift fetcher into the version field).
+            if slug and to:
+                rows.append((slug, frm, to, fet))
 fmt = sys.argv[1]
 if fmt == "porcelain":
     for r in rows:
