@@ -63,11 +63,18 @@ jobs:
           coverage: none
 
       - name: Install Upsun CLI
-        # Upsun's official installer. It's fetched from a mutable branch and
-        # piped to bash; if your threat model requires it, pin the installer to
-        # a tagged commit or verify a checksum before running it.
+        # Upsun's official installer, but pinned to an immutable commit (not the
+        # mutable `main` ref) and checksum-verified before it runs — so a later
+        # upstream change can't inject code into this token-bearing job. To
+        # update the CLI, bump both values (the ref is a upsun/cli commit SHA;
+        # the checksum is `sha256sum` of installer.sh at that commit).
+        env:
+          UPSUN_CLI_REF: 0146616e1e885337843d383cedb1a3c50acef850
+          UPSUN_CLI_INSTALLER_SHA256: b9122daeac7c689b213647df7893da87452ef1170f2d2dc1ebd82ad19076fc9b
         run: |
-          curl -fsSL https://raw.githubusercontent.com/upsun/cli/main/installer.sh | bash
+          curl -fsSL "https://raw.githubusercontent.com/upsun/cli/${UPSUN_CLI_REF}/installer.sh" -o /tmp/upsun-installer.sh
+          echo "${UPSUN_CLI_INSTALLER_SHA256}  /tmp/upsun-installer.sh" | sha256sum -c -
+          bash /tmp/upsun-installer.sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Load SSH certificate
