@@ -62,13 +62,49 @@ composer.json        The site manifest; postbuild copies config + mu-plugins
 wp-config.php        Upsun-aware config (relationships via config-reader)
 mu-plugins/          Your site code + site-config.php (plugin filter tuning)
 migrations/          Once-per-database deploy migrations
-scripts/             deploy.sh (update-db, migrate) + post-deploy.sh (sanitize)
+scripts/             deploy.sh, post-deploy.sh + vendor-update.sh (premium updates)
+private-packages/    Vendored premium plugins/themes (Composer path packages)
 wordpress/           Build output - gitignored, never edit by hand
 ```
 
 Site-specific behavior belongs in [mu-plugins/site-config.php](mu-plugins/site-config.php)
 via the plugin's filters — never by forking the plugin. If you change the
 route cache cookies in `.upsun/config.yaml`, mirror them there too.
+
+## Vendoring premium plugins
+
+Premium plugins and themes can't self-update on a read-only filesystem, so
+they're committed as Composer **path packages** under `private-packages/`
+(`plugins/<slug>/` and `themes/<slug>/`, each a full source tree plus a
+generated `composer.json`). The two `path` repositories and this convention
+are already wired in `composer.json`.
+
+**Onboard one** with the upsun-wp CLI, from a checkout that has the plugin
+installed:
+
+```bash
+wp upsun vendor learnpress-stripe --to=private-packages/plugins --vendor=private-plugin
+# then require it pinned to "*", so the vendored composer.json owns the version:
+composer require "private-plugin/learnpress-stripe:*"
+```
+
+**Keep them current** with `scripts/vendor-update.sh`, which drives the
+engine on a licensed Upsun environment so the authenticated download is
+resolved from the site's own state (the WordPress update transient, or a
+vendor's DB registration) — the license token never leaves the container:
+
+```bash
+UPSUN_PROJECT=<id> scripts/vendor-update.sh check          # pending updates
+UPSUN_PROJECT=<id> scripts/vendor-update.sh update <slug>  # re-vendor in place, then commit
+```
+
+Running Eduma / thim-core / LearnPress? Nothing extra to require — upsun-wp
+0.6+ ships a built-in ThimPress fetcher that auto-detects thim-core.
+
+Automate it with [.github/workflows/vendor-update.yml](.github/workflows/vendor-update.yml):
+a scheduled job that opens one `vendor/<slug>` PR per available update (each
+human-merged, since merging deploys production). Its header documents the
+one-time repo variables/secrets (`UPSUN_PROJECT`, `UPSUN_CLI_TOKEN`, `BOT_PAT`).
 
 ## Local development
 
