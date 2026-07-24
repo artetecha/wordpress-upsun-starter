@@ -18,11 +18,25 @@
         "wpackagist-plugin/*",
         "wpackagist-theme/*"
       ]
+    },
+    {
+      "type": "path",
+      "url": "private-packages/plugins/*",
+      "options": {
+        "symlink": false
+      }
+    },
+    {
+      "type": "path",
+      "url": "private-packages/themes/*",
+      "options": {
+        "symlink": false
+      }
     }
   ],
   "require": {
     "php": ">=8.2",
-    "artetecha/upsun-wp": "^0.3",
+    "artetecha/upsun-wp": "^0.6",
     "composer/installers": "^2.3",
     "johnpbloch/wordpress-core": "^7.0",
     "johnpbloch/wordpress-core-installer": "^2.0",

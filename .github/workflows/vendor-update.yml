@@ -1,0 +1,87 @@
+# Scheduled pipeline that raises one PR per vendored premium package with an
+# update available. It drives the upsun-wp vendoring engine on a licensed Upsun
+# environment via scripts/vendor-update-prs.sh, so license tokens never leave
+# Upsun. Disabled effectively until you complete the one-time setup below.
+#
+# SETUP (per consuming repo):
+#   Repo variables (Settings → Secrets and variables → Actions → Variables):
+#     UPSUN_PROJECT   your Upsun project id            (required)
+#     UPSUN_APP       application name                 (optional; default: wordpress)
+#   Repo secrets:
+#     UPSUN_CLI_TOKEN an Upsun API token that can SSH the licensed environment
+#     BOT_PAT         a fine-grained PAT with contents:write + pull-requests:write
+#   Optional: create a GitHub Environment (e.g. "upsun-prod") with required
+#   reviewers and scope UPSUN_CLI_TOKEN to it, then add `environment: upsun-prod`
+#   to the job below — a manual gate before anything SSHes into production.
+#
+# SECURITY: this workflow holds UPSUN_CLI_TOKEN (can SSH into your environment).
+# It must only ever run on schedule / workflow_dispatch from this repo — never
+# on pull_request / pull_request_target (which a fork could trigger).
+#
+# PRs are created with BOT_PAT, NOT the workflow GITHUB_TOKEN: PRs opened by
+# GITHUB_TOKEN never trigger the pull_request test workflows, which would
+# silently skip your test suite. These PRs are human-merged by design (merging
+# deploys production).
+
+name: Vendored premium updates
+
+on:
+  schedule:
+    # Off the :00/:30 marks — GitHub drops cron runs scheduled at busy minutes.
+    - cron: '43 5 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      slugs:
+        description: "Space-separated package slugs to update (empty = all with updates)"
+        required: false
+        default: ""
+
+concurrency:
+  group: vendor-update
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.BOT_PAT }}
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer
+          coverage: none
+
+      - name: Install Upsun CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/upsun/cli/main/installer.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Load SSH certificate
+        env:
+          UPSUN_CLI_TOKEN: ${{ secrets.UPSUN_CLI_TOKEN }}
+        run: upsun ssh-cert:load --no-interaction
+
+      - name: Configure git author
+        run: |
+          git config user.name "upsun-vendor-bot"
+          git config user.email "upsun-vendor-bot@users.noreply.github.com"
+
+      - name: Raise update PRs
+        env:
+          UPSUN_CLI_TOKEN: ${{ secrets.UPSUN_CLI_TOKEN }}
+          UPSUN_PROJECT: ${{ vars.UPSUN_PROJECT }}
+          UPSUN_APP: ${{ vars.UPSUN_APP }}
+          GH_TOKEN: ${{ secrets.BOT_PAT }}
+          # Via env (not inline interpolation) so the input can't inject shell.
+          SLUGS: ${{ inputs.slugs }}
+        run: bash scripts/vendor-update-prs.sh $SLUGS
