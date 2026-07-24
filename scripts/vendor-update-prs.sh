@@ -48,7 +48,7 @@ retry() {
 	return 1
 }
 
-git fetch origin "$BASE_BRANCH"
+retry 3 git fetch origin "$BASE_BRANCH"
 
 echo "==> checking every vendored package via the vendoring engine"
 updates=$(retry 3 "$DRIVER" check --porcelain)
@@ -72,15 +72,17 @@ while read -r slug local_ver remote_ver fetcher; do
 
 	pr_json=$(gh pr list --head "$branch" --base "$BASE_BRANCH" --state open --json number,body,mergeable --jq '.[0] // empty')
 	if [ -n "$pr_json" ] && grep -qF "$marker" <<<"$pr_json"; then
-		# Same version already proposed — skip only if still mergeable.
-		# Conflicted branches (lock overlap after a sibling merged) MUST
-		# rebuild or they stay stale forever; the self-heal hinges on this.
+		# Same version already proposed. Skip only when GitHub has CONFIRMED the
+		# PR is mergeable. CONFLICTING (lock overlap after a sibling merged) and
+		# UNKNOWN (mergeability not yet recomputed — common in the moments right
+		# after that merge) both rebuild, so the self-heal fires instead of
+		# skipping a stale conflicted PR as if it were fine.
 		mergeable=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("mergeable",""))' "$pr_json")
-		if [ "$mergeable" != "CONFLICTING" ]; then
-			echo "==> $slug: open PR already proposes $remote_ver, skipping"
+		if [ "$mergeable" = "MERGEABLE" ]; then
+			echo "==> $slug: open PR already proposes $remote_ver and is mergeable, skipping"
 			continue
 		fi
-		echo "==> $slug: open PR is conflicted, rebuilding from $BASE_BRANCH"
+		echo "==> $slug: open PR proposes $remote_ver but mergeable=$mergeable — rebuilding from $BASE_BRANCH"
 	fi
 
 	echo "==> $slug: $local_ver -> $remote_ver (via $fetcher)"
@@ -94,7 +96,9 @@ while read -r slug local_ver remote_ver fetcher; do
 		git reset --hard "origin/$BASE_BRANCH"
 		git clean -fd "$VENDOR_DIR"
 
-		"$DRIVER" update "$slug"
+		# The download/vendor step hits the Upsun API — retry it, like check,
+		# so a transient 503 doesn't fail an otherwise-good package.
+		retry 3 "$DRIVER" update "$slug"
 
 		git add -A "$VENDOR_DIR" composer.json composer.lock
 		# An up-to-date race between check and update stages nothing; benign.
@@ -102,22 +106,35 @@ while read -r slug local_ver remote_ver fetcher; do
 			echo "==> $slug: engine vendored nothing (up-to-date race), skipping"
 			exit 3
 		fi
-		git commit -m "Update ${slug} ${local_ver} -> ${remote_ver} (vendored premium)"
+
+		# Advertise the version actually vendored (read from the committed
+		# composer.json), which can differ from the dry-run prediction if the
+		# upstream moved between check and update — so the PR never claims a
+		# version other than the one it commits. Falls back to the prediction.
+		cj="$(ls "$VENDOR_DIR"/plugins/"$slug"/composer.json "$VENDOR_DIR"/themes/"$slug"/composer.json 2>/dev/null | head -1)"
+		ver="$remote_ver"
+		if [ -n "$cj" ]; then
+			ver="$(php -r '$c = json_decode(file_get_contents($argv[1]), true); echo is_array($c) ? ($c["version"] ?? "") : "";' "$cj")"
+			[ -n "$ver" ] || ver="$remote_ver"
+		fi
+		marker="<!-- vendored-update: ${slug}@${ver} -->"
+
+		git commit -m "Update ${slug} ${local_ver} -> ${ver} (vendored premium)"
 		git push --force origin "$branch"
 
 		body=$(printf '%s\n\nAutomated update of `%s` from **%s** to **%s** via the %s fetcher (`wp upsun vendor`).\n\nMerging deploys to production — review the CI results and the preview environment first. This PR is human-merged by design.\n' \
-			"$marker" "$slug" "$local_ver" "$remote_ver" "$fetcher")
+			"$marker" "$slug" "$local_ver" "$ver" "$fetcher")
 
 		if [ -n "$pr_json" ]; then
 			pr_number=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["number"])' "$pr_json")
 			gh pr edit "$pr_number" \
-				--title "Update ${slug} ${local_ver} → ${remote_ver}" --body "$body"
+				--title "Update ${slug} ${local_ver} → ${ver}" --body "$body"
 		else
 			# Create the label lazily (idempotent) so the first run needs no setup.
 			gh label create "$LABEL" --color 5319e7 \
 				--description "Automated vendored premium update" --force >/dev/null 2>&1 || true
 			gh pr create --head "$branch" --base "$BASE_BRANCH" \
-				--title "Update ${slug} ${local_ver} → ${remote_ver}" \
+				--title "Update ${slug} ${local_ver} → ${ver}" \
 				--label "$LABEL" --body "$body"
 		fi
 	) </dev/null || rc=$?

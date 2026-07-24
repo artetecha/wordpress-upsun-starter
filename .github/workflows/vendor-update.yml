@@ -7,6 +7,7 @@
 #   Repo variables (Settings → Secrets and variables → Actions → Variables):
 #     UPSUN_PROJECT   your Upsun project id            (required)
 #     UPSUN_APP       application name                 (optional; default: wordpress)
+#     UPSUN_ENV       licensed environment to drive    (optional; default: main)
 #   Repo secrets:
 #     UPSUN_CLI_TOKEN an Upsun API token that can SSH the licensed environment
 #     BOT_PAT         a fine-grained PAT with contents:write + pull-requests:write
@@ -62,6 +63,9 @@ jobs:
           coverage: none
 
       - name: Install Upsun CLI
+        # Upsun's official installer. It's fetched from a mutable branch and
+        # piped to bash; if your threat model requires it, pin the installer to
+        # a tagged commit or verify a checksum before running it.
         run: |
           curl -fsSL https://raw.githubusercontent.com/upsun/cli/main/installer.sh | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -81,6 +85,8 @@ jobs:
           UPSUN_CLI_TOKEN: ${{ secrets.UPSUN_CLI_TOKEN }}
           UPSUN_PROJECT: ${{ vars.UPSUN_PROJECT }}
           UPSUN_APP: ${{ vars.UPSUN_APP }}
+          # Set the UPSUN_ENV repo variable if your licensed environment isn't "main".
+          UPSUN_ENV: ${{ vars.UPSUN_ENV }}
           GH_TOKEN: ${{ secrets.BOT_PAT }}
           # Via env (not inline interpolation) so the input can't inject shell.
           SLUGS: ${{ inputs.slugs }}

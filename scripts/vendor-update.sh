@@ -37,9 +37,21 @@ PKG_DIR="${ROOT_DIR}/${VENDOR_DIR:-private-packages}"
 NS_PLUGIN="${VENDOR_NS_PLUGIN:-private-plugin}"
 NS_THEME="${VENDOR_NS_THEME:-private-theme}"
 
-# Slugs are interpolated into commands run on the credential-bearing container,
-# so every one must match this before it goes near SSH.
+# Slugs and vendor namespaces are interpolated into commands run on the
+# credential-bearing container, so every one must match this before it goes
+# near SSH. A single quote (or anything outside this set) could break out of
+# the remote quoting.
 SLUG_RE='^[A-Za-z0-9._-]+$'
+
+# A safe slug: matches SLUG_RE and is not a path traversal (., ..).
+slug_ok() { [[ "$1" =~ $SLUG_RE ]] && [ "$1" != "." ] && [ "$1" != ".." ]; }
+
+# Fail fast on a misconfigured (or malicious) vendor namespace — it reaches
+# the remote --vendor='...' the same way a slug does.
+for _ns in "$NS_PLUGIN" "$NS_THEME"; do
+	[[ "$_ns" =~ $SLUG_RE ]] || { echo "ERROR: invalid vendor namespace '$_ns' (allowed: A-Z a-z 0-9 . _ -)" >&2; exit 1; }
+done
+unset _ns
 
 # Whole-vendor-step timeout on the container (seconds); the engine's own
 # wp_remote_get already caps the download at 120s. Run container-side (Linux
@@ -59,7 +71,7 @@ vendored_entries() {
 		for pkg in "$PKG_DIR/$sub"/*/; do
 			[ -f "${pkg}composer.json" ] || continue
 			slug="$(basename "$pkg")"
-			if [[ ! "$slug" =~ $SLUG_RE ]]; then
+			if ! slug_ok "$slug"; then
 				echo "WARN: skipping unsafe package name '$slug'" >&2
 				continue
 			fi
@@ -139,7 +151,7 @@ else:
 
 cmd_update() { # cmd_update <slug>
 	local slug="$1" layout kind type ns tmp version
-	if [[ ! "$slug" =~ $SLUG_RE ]]; then
+	if ! slug_ok "$slug"; then
 		echo "ERROR: refusing unsafe package name '$slug'" >&2; return 1
 	fi
 	layout="$(slug_layout "$slug")" || { echo "ERROR: $slug is not in $PKG_DIR/" >&2; return 1; }
@@ -163,7 +175,7 @@ cmd_update() { # cmd_update <slug>
 			tar -C /tmp/upsun-vendor -cf - '$slug' | base64
 		fi
 		rm -rf /tmp/upsun-vendor
-	" | base64 -d > "$tmp/pkg.tar"
+	" | python3 -c 'import base64, sys; sys.stdout.buffer.write(base64.b64decode(sys.stdin.buffer.read()))' > "$tmp/pkg.tar"
 
 	if [ ! -s "$tmp/pkg.tar" ]; then
 		echo "==> $slug: up to date; nothing vendored."
