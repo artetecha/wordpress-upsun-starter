@@ -68,10 +68,13 @@ while read -r slug local_ver remote_ver fetcher; do
 	fi
 
 	branch="vendor/$slug"
-	marker="<!-- vendored-update: ${slug}@${remote_ver} -->"
+	# Detect an existing same-version PR by the marker's angle-bracket-free
+	# inner key: `gh --json body` HTML-escapes < and > to </>, so
+	# grepping the full "<!-- … -->" comment against that JSON never matches.
+	marker_key="vendored-update: ${slug}@${remote_ver}"
 
 	pr_json=$(gh pr list --head "$branch" --base "$BASE_BRANCH" --state open --json number,body,mergeable --jq '.[0] // empty')
-	if [ -n "$pr_json" ] && grep -qF "$marker" <<<"$pr_json"; then
+	if [ -n "$pr_json" ] && grep -qF "$marker_key" <<<"$pr_json"; then
 		# Same version already proposed. Skip only when GitHub has CONFIRMED the
 		# PR is mergeable. CONFLICTING (lock overlap after a sibling merged) and
 		# UNKNOWN (mergeability not yet recomputed — common in the moments right
