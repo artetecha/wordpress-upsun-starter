@@ -16,7 +16,10 @@ deploy migrations, Upsun-specific health checks, and a `wp upsun` CLI.
 - **The upsun-wp plugin, correctly installed**: staged into
   `composer-mu-plugins/` and copied into the build by `postbuild` (Composer's
   alphabetical install order would otherwise let the core extraction delete
-  it), loader shim in place, migrations directory wired.
+  it), loader shim in place, migrations directory wired. Pinned at `^1.0`,
+  whose [public API is frozen](https://github.com/artetecha/upsun-wp/blob/main/docs/api-reference.md#deprecation-policy)
+  — every `1.x` release is a safe `composer update`, and the filters you write
+  in `mu-plugins/site-config.php` keep working.
 - **Safe previews out of the box**: every non-production environment
   intercepts outbound mail, forces WooCommerce Stripe into test mode, pauses
   webhooks, and sends noindex — with a sanitize flow triggered from the
